@@ -211,7 +211,7 @@ const Payment = () => {
                   className={`flex items-center justify-between p-3 mb-2 cursor-pointer ${
                     selectedMethod === "gpay" ? "active" : ""
                   }`}
-                  onClick={() => setSelectedMethod("gpay")}
+                  onClick={() => setSelectedMethod("phonepe")}
                 >
                   <div className="flex items-center">
                     <input
