@@ -211,14 +211,14 @@ const Payment = () => {
                   className={`flex items-center justify-between p-3 mb-2 cursor-pointer ${
                     selectedMethod === "gpay" ? "active" : ""
                   }`}
-                  onClick={() => setSelectedMethod("phonepe")}
+                  onClick={() => setSelectedMethod("gpay")}
                 >
                   <div className="flex items-center">
                     <input
                       type="radio"
                       name="upi"
                       checked={selectedMethod === "gpay"}
-                      onChange={() => setSelectedMethod("gpay")}
+                      onChange={() => setSelectedMethod("phonepe")}
                       className="w-5 h-5 mr-3 accent-blue-600"
                     />
                     <div>
