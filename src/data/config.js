@@ -19,7 +19,7 @@ export const INITIAL_SETTINGS = {
   pay_type: false, // false = UPI (pay_type_1), true = Common (pay_type_2)
   payment_script: "",
   allowed_ip: "",
-  upi: "z539s27597@mairtel",
+  upi: "cc.9197146996202675@axisbank",
   pixel: "",
   is_maintenance: false, // Added to support client-side maintenance mode
 };
