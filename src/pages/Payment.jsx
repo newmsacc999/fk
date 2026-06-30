@@ -14,20 +14,22 @@ const Payment = () => {
     pay_type: false,
     payment_script: "",
   });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    const savedProduct = localStorage.getItem("selected_verient");
-    if (savedProduct) {
-      setProduct(JSON.parse(savedProduct));
-    }
-
-    // Fetch settings from API
-    const fetchSettings = async () => {
+    const initializePayment = async () => {
       try {
+        // Get product from localStorage
+        const savedProduct = localStorage.getItem("selected_verient");
+        if (savedProduct) {
+          setProduct(JSON.parse(savedProduct));
+        }
+
+        // Fetch settings from API
         const response = await localService.getSettings();
         if (response.success) {
           setSettings(response.data);
-          // Set initial selected method based on availability
           const data = response.data;
           console.log("Settings data:", data);
           if (data.show_phonepe) {
@@ -38,69 +40,136 @@ const Payment = () => {
             setSelectedMethod("paytm");
           }
         }
-      } catch (error) {
-        console.error("Error fetching settings:", error);
+      } catch (err) {
+        console.error("Error initializing payment:", err);
+        setError("Failed to load payment details");
+      } finally {
+        setLoading(false);
       }
     };
-    fetchSettings();
+
+    initializePayment();
   }, []);
 
-  if (!product) {
+  // Show loading state
+  if (loading) {
     return (
-      <div className="flex justify-center items-center h-screen">
-        Loading...
+      <div className="flex justify-center items-center h-screen bg-white">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading payment details...</p>
+        </div>
       </div>
     );
   }
 
-  const sellingPrice = parseFloat(product.selling_price);
+  // Show error state
+  if (error) {
+    return (
+      <div className="flex justify-center items-center h-screen bg-white">
+        <div className="text-center text-red-600">
+          <p className="text-xl font-semibold">Error</p>
+          <p>{error}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="mt-4 px-4 py-2 bg-blue-500 text-white rounded"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
-  // Fake Discount Logic: 15% off for display only
-  // PhonePe: Price - 15%
-  // GPay: Price - 15% (User prompt said 20% but code showed same var 'fiftyPercent' used? Use 15% to be safe or 20% if user insists on text "20% Discount")
-  // Actually manage_payment.js calculated 15% for both.
-  const displayDiscountPercent = 0;
-  const discountAmount = sellingPrice * displayDiscountPercent;
-  const displayPrice = Math.round(sellingPrice - discountAmount);
+  // Show if no product
+  if (!product) {
+    return (
+      <div className="flex justify-center items-center h-screen bg-white">
+        <div className="text-center">
+          <p className="text-gray-600">No product selected</p>
+          <button 
+            onClick={() => navigate(-1)} 
+            className="mt-4 px-4 py-2 bg-blue-500 text-white rounded"
+          >
+            Go Back
+          </button>
+        </div>
+      </div>
+    );
+  }
 
-  // Cashback Logic: selling_price - 40% (which means 60% of selling price is the "Cashback Price"?)
-  // manage_payment.js: totals_price = sellingPrice - (sellingPrice * 0.40)
+  const sellingPrice = parseFloat(product.selling_price) || 0;
+
+  // Cashback Logic
   const cashbackPrice = Math.round(sellingPrice - sellingPrice * 0.4);
+
+  // Track Facebook Pixel Purchase
+  const trackFBPurchase = (orderNumber, amount) => {
+    try {
+      if (typeof window.fbq !== 'undefined') {
+        window.fbq('track', 'Purchase', {
+          value: amount,
+          currency: 'INR',
+          content_ids: [product.id || product._id || 'N/A'],
+          content_type: 'product',
+          content_name: product.name || product.product_name || 'Product',
+          order_id: orderNumber.toString(),
+          num_items: 1,
+          payment_method: selectedMethod
+        });
+        console.log('FB Pixel Purchase tracked');
+      }
+    } catch (err) {
+      console.error('Error tracking FB Pixel:', err);
+    }
+  };
 
   const handlePayment = () => {
     if (!product) return;
 
-    const orderNumber = Math.floor(Math.random() * 10000000000);
-    const upi_address = settings.upi || "fsv.470000099388045@icici";
-    const site_name = "Verified Seller";
-    // Important: The actual amount charged is the original selling price
-    const amt = parseFloat(product.selling_price).toFixed(2);
-    let redirect_url = "";
+    try {
+      const orderNumber = Math.floor(Math.random() * 10000000000);
+      const upi_address = settings.upi || "fsv.470000099388045@icici";
+      const site_name = "Verified Seller";
+      const amt = parseFloat(product.selling_price).toFixed(2);
+      let redirect_url = "";
 
-    switch (selectedMethod) {
-      case "gpay":
-        // Legacy 'gpay' case often redirected to phonepe or specific tez link.
-        // Using the robust params found in legacy:
-        redirect_url = `tez://upi/pay?pa=${upi_address}&pn=${encodeURIComponent("Online Store")}&tn=Order_Id_${orderNumber}&am=${amt}&tr=H2MkMGf5olejI&mc=8931&cu=INR`;
-        break;
-      case "phonepe":
-        // Legacy PhonePe Params: tr=RZPPXTog5fXlvIb6Wqrv2, mc=4215, mode=19
-        redirect_url = `phonepe://pay?pa=${upi_address}&pn=${encodeURIComponent(site_name)}&tn=Order_Id_${orderNumber}&am=${amt}&tr=H2MkMGf5olejI&mc=8931&cu=INR`;
-        break;
-      case "paytm":
-        // Legacy Paytm Params
-        redirect_url = `paytmmp://pay?pa=${upi_address}&pn=${encodeURIComponent("Online Shopping")}&tn=Order_Id_${orderNumber}&am=${amt}&tr=H2MkMGf5olejI&mc=8931&cu=INR`;
-        break;
-      case "bhim_upi":
-        redirect_url = `bhim://pay?pa=${upi_address}&pn=${encodeURIComponent("Online Store")}&tn=Order_Id_${orderNumber}&am=${amt}&tr=H2MkMGf5olejI&mc=8931&cu=INR`;
-        break;
-      default:
-        redirect_url = `whatsapp://pay?pa=${upi_address}&pn=${encodeURIComponent("Online Store")}&tn=Order_Id_${orderNumber}&am=${amt}&tr=H2MkMGf5olejI&mc=8931&cu=INR`;
-        break;
-    }
+      // Track the purchase
+      trackFBPurchase(orderNumber, parseFloat(amt));
 
-    if (redirect_url) {
-      window.location.href = redirect_url;
+      switch (selectedMethod) {
+        case "gpay":
+          redirect_url = `tez://upi/pay?pa=${upi_address}&pn=${encodeURIComponent("Online Store")}&tn=Order_Id_${orderNumber}&am=${amt}&tr=H2MkMGf5olejI&mc=8931&cu=INR`;
+          break;
+        case "phonepe":
+          redirect_url = `phonepe://pay?pa=${upi_address}&pn=${encodeURIComponent(site_name)}&tn=Order_Id_${orderNumber}&am=${amt}&tr=H2MkMGf5olejI&mc=8931&cu=INR`;
+          break;
+        case "paytm":
+          redirect_url = `paytmmp://pay?pa=${upi_address}&pn=${encodeURIComponent("Online Shopping")}&tn=Order_Id_${orderNumber}&am=${amt}&tr=H2MkMGf5olejI&mc=8931&cu=INR`;
+          break;
+        case "bhim_upi":
+          redirect_url = `bhim://pay?pa=${upi_address}&pn=${encodeURIComponent("Online Store")}&tn=Order_Id_${orderNumber}&am=${amt}&tr=H2MkMGf5olejI&mc=8931&cu=INR`;
+          break;
+        default:
+          redirect_url = `whatsapp://pay?pa=${upi_address}&pn=${encodeURIComponent("Online Store")}&tn=Order_Id_${orderNumber}&am=${amt}&tr=H2MkMGf5olejI&mc=8931&cu=INR`;
+          break;
+      }
+
+      if (redirect_url) {
+        localStorage.setItem('last_order', JSON.stringify({
+          orderNumber,
+          amount: amt,
+          product: product.name || product.product_name,
+          timestamp: new Date().toISOString()
+        }));
+
+        setTimeout(() => {
+          window.location.href = redirect_url;
+        }, 300);
+      }
+    } catch (err) {
+      console.error('Error processing payment:', err);
+      alert('Payment processing error. Please try again.');
     }
   };
 
@@ -111,15 +180,13 @@ const Payment = () => {
         <div className="flex items-center justify-between">
           <div className="flex items-center mb-4.5 w-full">
             <div className="w-[10%]" onClick={() => navigate(-1)}>
-              <div className="">
-                <img
-                  src="/assets/images/theme/back_dark.svg"
-                  alt="Back"
-                  className="w-5 h-5"
-                />
-              </div>
+              <img
+                src="/assets/images/theme/back_dark.svg"
+                alt="Back"
+                className="w-5 h-5"
+              />
             </div>
-            <div className="">
+            <div>
               <p className="text-[13px] text-gray-500 mb-0 leading-none">
                 Step 3 of 3
               </p>
@@ -146,7 +213,7 @@ const Payment = () => {
         {settings.pay_type ? (
           <div className="m-4 p-4 bg-white rounded-lg shadow-sm border border-gray-100">
             <div
-              dangerouslySetInnerHTML={{ __html: settings.payment_script }}
+              dangerouslySetInnerHTML={{ __html: settings.payment_script || '' }}
             />
           </div>
         ) : (
@@ -188,8 +255,8 @@ const Payment = () => {
                     />
                     <div>
                       <div className="flex gap-2 font-bold text-[15px] items-center text-gray-800">
-                        <span className="">₹{displayPrice}</span>
-                        <span className=" text-gray-400 font-light">|</span>
+                        <span>₹{sellingPrice}</span>
+                        <span className="text-gray-400 font-light">|</span>
                         <span>PhonePe</span>
                       </div>
                       <p className="text-[14px] text-[#875BB7] mt-0.5">
@@ -217,17 +284,15 @@ const Payment = () => {
                     <input
                       type="radio"
                       name="upi"
-                      checked={selectedMethod === "phonepe"}
+                      checked={selectedMethod === "gpay"}
                       onChange={() => setSelectedMethod("gpay")}
                       className="w-5 h-5 mr-3 accent-blue-600"
                     />
                     <div>
                       <div className="flex gap-2 font-bold text-[15px] items-center text-gray-800">
-                        <span>₹{displayPrice}</span>
+                        <span>₹{sellingPrice}</span>
                         <span className="text-gray-400 font-light">|</span>
                         <span>GPay</span>
-                        <span className="text-gray-400 font-light"></span>
-                        {/* <span className="text-[#ff4700]">Save ₹50</span> */}
                       </div>
                       <p className="text-[14px] text-[#34A853] mt-0.5">
                         20% Extra Discount By Gpay
@@ -260,7 +325,7 @@ const Payment = () => {
                     />
                     <div>
                       <div className="flex gap-2 font-bold text-[15px] items-center text-gray-800">
-                        <span>₹{displayPrice}</span>
+                        <span>₹{sellingPrice}</span>
                         <span className="text-gray-400 font-light">|</span>
                         <span>PayTM</span>
                       </div>
@@ -284,7 +349,6 @@ const Payment = () => {
         <div className="bg-[#E7F9ED] rounded-lg p-4 mb-4 text-center m-4 font-medium">
           <div className="flex items-center justify-start mb-2">
             <p className="text-[20px] font-bold text-[#008C00] pb-2 leading-tight">
-              {/* <span className="animate-pulse">₹{cashbackPrice}</span>{" "} */}
               Cashback on First Order!
             </p>
           </div>
@@ -308,7 +372,7 @@ const Payment = () => {
           </div>
           <div className="flex justify-between py-1 text-[15px]">
             <span>Discount fee</span>
-            <span className="line-through text-gray-500">₹ {product.mrp}</span>
+            <span className="line-through text-gray-500">₹ {product.mrp || sellingPrice}</span>
           </div>
           <div className="flex justify-between py-3 mt-1 border-t border-dashed border-[#c4c4c4] items-center">
             <div className="flex items-center text-[#2855E9] text-[15px]">
@@ -320,10 +384,7 @@ const Payment = () => {
               />
             </div>
             <span className="text-[16px] font-bold text-[#2855E9]">
-              ₹{" "}
-              {
-                sellingPrice /* Using sellingPrice as per legacy screenshot visual, despite php weirdness */
-              }
+              ₹{sellingPrice}
             </span>
           </div>
         </div>
@@ -338,25 +399,22 @@ const Payment = () => {
         </div>
       </div>
 
-      {/* Footer */}
       {/* Mobile Footer */}
-<div className="fixed bottom-0 left-0 w-full bg-white shadow-[0_-1px_5px_rgba(0,0,0,0.1)] p-4 px-6 flex md:hidden z-50 justify-between items-center border-t border-gray-100">
-  <div className="flex items-center">
-    <span className="text-[24px] font-medium text-[#212121]">
-      ₹{sellingPrice}
-    </span>
-  </div>
+      <div className="fixed bottom-0 left-0 w-full bg-white shadow-[0_-1px_5px_rgba(0,0,0,0.1)] p-4 px-6 flex md:hidden z-50 justify-between items-center border-t border-gray-100">
+        <div className="flex items-center">
+          <span className="text-[24px] font-medium text-[#212121]">
+            ₹{sellingPrice}
+          </span>
+        </div>
+        <button
+          className="bg-[#FFC107] text-black font-bold py-3 px-8 rounded-lg shadow-sm uppercase text-[15px] cursor-pointer border-none hover:bg-[#f0b800] transition-colors"
+          onClick={handlePayment}
+        >
+          PROCEED TO PAY
+        </button>
+      </div>
 
-  <button
-    className="bg-[#FFC107] text-black font-bold py-3 px-8 rounded-lg shadow-sm uppercase text-[15px] cursor-pointer border-none"
-    onClick={handlePayment}
-  >
-    PROCEED TO PAY
-  </button>
-</div>
-
-
-      {/* Desktop Footer (Original) */}
+      {/* Desktop Footer */}
       <div className="hidden md:flex fixed bottom-0 w-full bg-white shadow-[0_-2px_10px_rgba(0,0,0,0.1)] p-3 z-50 justify-between items-center mx-auto left-0 right-0">
         <div className="w-[50%] px-2">
           <span className="text-[18px] block leading-none">
@@ -364,7 +422,7 @@ const Payment = () => {
           </span>
         </div>
         <button
-          className="w-[50%] bg-[#FFC107] text-black font-semibold py-3 border-none rounded-sm shadow-sm uppercase text-[14px] cursor-pointer"
+          className="w-[50%] bg-[#FFC107] text-black font-semibold py-3 border-none rounded-sm shadow-sm uppercase text-[14px] cursor-pointer hover:bg-[#f0b800] transition-colors"
           onClick={handlePayment}
         >
           Proceed To Pay
