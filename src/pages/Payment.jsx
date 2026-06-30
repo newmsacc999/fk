@@ -217,7 +217,7 @@ const Payment = () => {
                     <input
                       type="radio"
                       name="upi"
-                      checked={selectedMethod === "phonepe"}
+                      checked={selectedMethod === "gpay"}
                       onChange={() => setSelectedMethod("gpay")}
                       className="w-5 h-5 mr-3 accent-blue-600"
                     />
