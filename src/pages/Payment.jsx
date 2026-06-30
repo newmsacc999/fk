@@ -425,7 +425,7 @@ const Payment = () => {
           className="w-[50%] bg-[#FFC107] text-black font-semibold py-3 border-none rounded-sm shadow-sm uppercase text-[14px] cursor-pointer hover:bg-[#f0b800] transition-colors"
           onClick={handlePayment}
         >
-          Proceed To Pa
+          Proceed To Pay
         </button>
       </div>
     </div>
